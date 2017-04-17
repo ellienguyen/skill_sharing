@@ -101,3 +101,58 @@ router.add("POST", /^\/talks\/([^\/]+)\/comments$/, function (request, response,
         }
     });
 });
+
+//GET comes in for /talks is request for all talks or updates
+
+function sendTalks(talks, response) {
+    respondJSON(response, 200, {
+        serverTime: Data.now(),
+        talks: talks
+    });
+}
+
+router.add("GET", /^\/talks$/, function (request, response) {
+    var query = require("url").parse(request.url, true).query;
+    if (query.changeSince == null) {
+        var list = [];
+        for (var title in talks) {
+            list.push(talks[title]);
+        }
+        sendTalks(list, response);
+    } else {
+        var since = Number(query.changeSince);
+        if (isNaN(since)) {
+            respond(response, 400, "Invalid parameter");
+        } else {
+            var changed = getChangedTalks(since);
+            if (changed.length > 0) {
+                sendTalks(changed, response);
+            } else {
+                waitForChanges(since, response);
+            }
+        }
+    }
+});
+
+var waiting = [];
+
+function waitForChanges(since, response) {
+    var waiter = {since: since, response: response};
+    waiting.push(waiter);
+    setTimeout(function () {
+        var found = waiting.indexOf(waiter);
+        if (found > -1) {
+            waiting.splice(found, 1);
+            sendTalks([], response);
+        }
+    }, 90 * 1000);
+}
+
+var changes = [];
+function registerChange(title) {
+    changes.push({title: title, time: Date.now()});
+    waiting.forEach(function (waiter) {
+        sendTalks(getChangedTalks(waiter.since), waiter.response);
+    });
+    waiting = [];
+}
